@@ -25,7 +25,7 @@ def download_video():
 # TODO 1: Initialize a thread-safe queue with maxsize=1
 # This ensures we only hold the absolute freshest frame.
 # ---------------------------------------------------------
-frame_queue = None # Placeholder, replace with queue.Queue(maxsize=1)
+frame_queue = queue.Queue(maxsize=1)
 
 # A thread-safe flag to gracefully stop all threads
 stop_event = threading.Event()
@@ -51,11 +51,19 @@ def producer_thread(video_path):
         #   2. Put the new frame in.
         # Handle exceptions carefully to avoid race conditions!
         # ---------------------------------------------------------
-        # try:
-        #     frame_queue.put_nowait(frame)
-        # except queue.Full:
-        #     ... your drop logic here ...
-        pass # Placeholder
+        try:
+            frame_queue.put_nowait(frame)
+        except queue.Full:
+            try:
+                frame_queue.get_nowait()  # Discard the stale frame
+            except queue.Empty:
+                pass # Safe catch: The consumer grabbed it exactly at this microsecond
+            
+            try:
+                frame_queue.put_nowait(frame)
+            except queue.Full:
+                pass # Safe catch: extremely rare race condition
+        
 
         frame_count += 1
         # Simulate camera hardware delay (approx 30 FPS)
@@ -80,12 +88,11 @@ def consumer_thread():
         # 2. If queue.Empty is raised, 'continue' the loop.
         # 3. Run model inference: model(frame, verbose=False)
         # ---------------------------------------------------------
-        # try:
-        #     frame = frame_queue.get(timeout=1.0)
-        # except queue.Empty:
-        #     continue
-        # results = model(frame, verbose=False)
-        pass # Placeholder
+        try:
+            frame = frame_queue.get(timeout=1.0)
+        except queue.Empty:
+            continue
+        results = model(frame, verbose=False)
             
         # --- Update & Print Metrics (Do not modify) ---
         processed_count += 1
